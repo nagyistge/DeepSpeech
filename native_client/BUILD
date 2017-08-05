@@ -19,15 +19,15 @@ cc_library(
     srcs = ["deepspeech_utils.cc",
             "c_speech_features/c_speech_features.c",
             "kiss_fft130/kiss_fft.c",
-            "kiss_fft130/tools/kiss_fftr.c"],
-    hdrs = ["deepspeech_utils.h",
-            "c_speech_features/c_speech_features.h",
-            "c_speech_features/c_speech_features_config.h",
-            "kiss_fft130/kiss_fft.h",
-            "kiss_fft130/_kiss_fft_guts.h",
-            "kiss_fft130/tools/kiss_fftr.h"],
+            "kiss_fft130/tools/kiss_fftr.c"] +
+           glob(["kenlm/lm/*.cc", "kenlm/util/*.cc", "kenlm/util/double-conversion/*.cc",
+                 "kenlm/lm/*.hh", "kenlm/util/*.hh", "kenlm/util/double-conversion/*.h"],
+                exclude = ["kenlm/*/*test.cc", "kenlm/*/*main.cc"]),
+    hdrs = ["deepspeech_utils.h"],
     includes = ["c_speech_features",
-                "kiss_fft130"],
+                "kiss_fft130",
+                "kenlm"],
+    defines = ["KENLM_MAX_ORDER=6"],
 
     # fma/avx/avx2 enabled in gcc cause significant performance decreases in
     # c_speech_features and so are force-disabled.
