@@ -23,11 +23,62 @@ from threading import Thread, Lock
 from util.feeding import DataSet, ModelFeeder
 from util.gpu import get_available_gpus
 from util.shared_lib import check_cupti
-from util.spell import correction
+# from util.spell import correction
 from util.text import sparse_tensor_value_to_texts, wer
 from xdg import BaseDirectory as xdg
 import numpy as np
 
+custom_op_module = tf.load_op_library("/Users/remorais/Development/tensorflow/bazel-bin/native_client/libdeepspeech_utils.so")
+# custom_op_module.ctc_beam_search_decoder_with_lm
+
+def decode_with_lm(inputs, sequence_length, beam_width=100,
+                   top_paths=1, merge_repeated=True):
+  """Performs beam search decoding on the logits given in input.
+
+  **Note** The `ctc_greedy_decoder` is a special case of the
+  `ctc_beam_search_decoder` with `top_paths=1` and `beam_width=1` (but
+  that decoder is faster for this special case).
+
+  If `merge_repeated` is `True`, merge repeated classes in the output beams.
+  This means that if consecutive entries in a beam are the same,
+  only the first of these is emitted.  That is, when the top path
+  is `A B B B B`, the return value is:
+
+    * `A B` if `merge_repeated = True`.
+    * `A B B B B` if `merge_repeated = False`.
+
+  Args:
+    inputs: 3-D `float` `Tensor`, size
+      `[max_time x batch_size x num_classes]`.  The logits.
+    sequence_length: 1-D `int32` vector containing sequence lengths,
+      having size `[batch_size]`.
+    beam_width: An int scalar >= 0 (beam search beam width).
+    top_paths: An int scalar >= 0, <= beam_width (controls output size).
+    merge_repeated: Boolean.  Default: True.
+
+  Returns:
+    A tuple `(decoded, log_probabilities)` where
+    decoded: A list of length top_paths, where `decoded[j]`
+      is a `SparseTensor` containing the decoded outputs:
+      `decoded[j].indices`: Indices matrix `(total_decoded_outputs[j] x 2)`
+        The rows store: [batch, time].
+      `decoded[j].values`: Values vector, size `(total_decoded_outputs[j])`.
+        The vector stores the decoded classes for beam j.
+      `decoded[j].shape`: Shape vector, size `(2)`.
+        The shape values are: `[batch_size, max_decoded_length[j]]`.
+    log_probability: A `float` matrix `(batch_size x top_paths)` containing
+        sequence log-probabilities.
+  """
+
+  decoded_ixs, decoded_vals, decoded_shapes, log_probabilities = (
+      custom_op_module.ctc_beam_search_decoder_with_lm(
+          inputs, sequence_length, beam_width=beam_width, top_paths=top_paths,
+          merge_repeated=merge_repeated))
+
+  return (
+      [tf.SparseTensor(ix, val, shape) for (ix, val, shape)
+       in zip(decoded_ixs, decoded_vals, decoded_shapes)],
+      log_probabilities)
 
 # Importer
 # ========
@@ -479,7 +530,10 @@ def calculate_mean_edit_distance_and_loss(model_feeder, tower, dropout):
     avg_loss = tf.reduce_mean(total_loss)
 
     # Beam search decode the batch
-    decoded, _ = tf.nn.ctc_beam_search_decoder(logits, batch_seq_len, merge_repeated=False)
+    # if decode_with_lm is None:
+    #     decoded, _ = tf.nn.ctc_beam_search_decoder(logits, batch_seq_len, merge_repeated=False)
+    # else:
+    decoded, _ = decode_with_lm(logits, batch_seq_len, merge_repeated=False)
 
     # Compute the edit (Levenshtein) distance
     distance = tf.edit_distance(tf.cast(decoded[0], tf.int32), batch_y)
@@ -712,7 +766,8 @@ def calculate_report(results_tuple):
     items = list(zip(*results_tuple))
     mean_wer = 0.0
     for label, decoding, distance, loss in items:
-        corrected = correction(decoding)
+        # corrected = correction(decoding)
+        corrected = decoding
         sample_wer = wer(label, corrected)
         sample = Sample(label, corrected, loss, distance, sample_wer)
         samples.append(sample)

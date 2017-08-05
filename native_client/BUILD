@@ -17,6 +17,8 @@ cc_library(
 cc_library(
     name = "deepspeech_utils",
     srcs = ["deepspeech_utils.cc",
+            "beam_search.cc",
+            "alphabet.h",
             "c_speech_features/c_speech_features.c",
             "kiss_fft130/kiss_fft.c",
             "kiss_fft130/tools/kiss_fftr.c"] +
@@ -28,6 +30,10 @@ cc_library(
                 "kiss_fft130",
                 "kenlm"],
     defines = ["KENLM_MAX_ORDER=6"],
+    deps = ["//tensorflow/core:core",
+            "//tensorflow/core/util/ctc",
+            "//third_party/eigen3",
+    ],
 
     # fma/avx/avx2 enabled in gcc cause significant performance decreases in
     # c_speech_features and so are force-disabled.
